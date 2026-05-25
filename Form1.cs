@@ -1,264 +1,209 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Drawing;
+using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows.Forms;
 
 namespace KnightHelper
 {
     public partial class Form1 : Form
     {
-        Timer timer = new Timer();
+        private bool isRunning = false;
+        private System.Windows.Forms.Timer potionTimer;
+        private DateTime lastHPTime = DateTime.MinValue;
+        private DateTime lastMPTime = DateTime.MinValue;
+        private string targetWindowTitle = "";
 
-        DateTime lastHpPot = DateTime.MinValue;
-        DateTime lastMpPot = DateTime.MinValue;
+        // --- HP/MP Bar Koordinatları (senin screenshot'a göre) ---
+        private int hpBarX = 130; // bar sol
+        private int hpBarY = 10; // bar üst
+        private int mpBarX = 130;
+        private int mpBarY = 25;
+        private int barWidth = 98; // bar genişliği
 
-        TextBox hpKeyBox;
-        TextBox mpKeyBox;
+        // API'lar
+        [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hWnd);
+        [DllImport("user32.dll")] static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+        [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+        [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+        [DllImport("user32.dll")] static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);
+        [DllImport("user32.dll")] static extern short VkKeyScan(char ch);
+        [DllImport("user32.dll")] static extern uint MapVirtualKey(uint uCode, uint uMapType);
+        [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+        [DllImport("user32.dll")] static extern IntPtr GetDC(IntPtr hwnd);
+        [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr hwnd, IntPtr hdc);
+        [DllImport("gdi32.dll")] static extern uint GetPixel(IntPtr hdc, int nXPos, int nYPos);
+        [DllImport("user32.dll")] public static extern int SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
+        [DllImport("user32.dll")] public static extern bool ReleaseCapture();
 
-        TextBox hpPercentBox;
-        TextBox mpPercentBox;
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
 
-        TextBox hpDelayBox;
-        TextBox mpDelayBox;
-
-        Label statusLabel;
-
-        [DllImport("user32.dll")]
-        static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);
-
-        const int KEYEVENTF_KEYUP = 0x0002;
+        const uint KEYEVENTF_KEYUP = 0x0002;
 
         public Form1()
         {
             InitializeComponent();
-
-            this.Text = "Knight Helper";
-            this.Width = 500;
-            this.Height = 450;
-
-            // TAB CONTROL
-            TabControl tabControl = new TabControl();
-            tabControl.Dock = DockStyle.Fill;
-
-            // SADECE 1 TAB
-            TabPage potionTab = new TabPage("Potion");
-
-            tabControl.TabPages.Add(potionTab);
-
-            this.Controls.Add(tabControl);
-
-            // HP POT TUŞU
-            Label hpKeyLabel = new Label();
-            hpKeyLabel.Text = "HP Pot Tuşu";
-            hpKeyLabel.Top = 30;
-            hpKeyLabel.Left = 20;
-            hpKeyLabel.AutoSize = true;
-
-            potionTab.Controls.Add(hpKeyLabel);
-
-            hpKeyBox = new TextBox();
-            hpKeyBox.Top = 50;
-            hpKeyBox.Left = 20;
-            hpKeyBox.Width = 100;
-            hpKeyBox.Text = "7";
-
-            potionTab.Controls.Add(hpKeyBox);
-
-            // MP POT TUŞU
-            Label mpKeyLabel = new Label();
-            mpKeyLabel.Text = "MP Pot Tuşu";
-            mpKeyLabel.Top = 90;
-            mpKeyLabel.Left = 20;
-            mpKeyLabel.AutoSize = true;
-
-            potionTab.Controls.Add(mpKeyLabel);
-
-            mpKeyBox = new TextBox();
-            mpKeyBox.Top = 110;
-            mpKeyBox.Left = 20;
-            mpKeyBox.Width = 100;
-            mpKeyBox.Text = "8";
-
-            potionTab.Controls.Add(mpKeyBox);
-
-            // HP YÜZDE
-            Label hpPercentLabel = new Label();
-            hpPercentLabel.Text = "HP Pot Yüzdesi";
-            hpPercentLabel.Top = 150;
-            hpPercentLabel.Left = 20;
-            hpPercentLabel.AutoSize = true;
-
-            potionTab.Controls.Add(hpPercentLabel);
-
-            hpPercentBox = new TextBox();
-            hpPercentBox.Top = 170;
-            hpPercentBox.Left = 20;
-            hpPercentBox.Width = 100;
-            hpPercentBox.Text = "60";
-
-            potionTab.Controls.Add(hpPercentBox);
-
-            // MP YÜZDE
-            Label mpPercentLabel = new Label();
-            mpPercentLabel.Text = "MP Pot Yüzdesi";
-            mpPercentLabel.Top = 210;
-            mpPercentLabel.Left = 20;
-            mpPercentLabel.AutoSize = true;
-
-            potionTab.Controls.Add(mpPercentLabel);
-
-            mpPercentBox = new TextBox();
-            mpPercentBox.Top = 230;
-            mpPercentBox.Left = 20;
-            mpPercentBox.Width = 100;
-            mpPercentBox.Text = "40";
-
-            potionTab.Controls.Add(mpPercentBox);
-
-            // HP GECİKME
-            Label hpDelayLabel = new Label();
-            hpDelayLabel.Text = "HP Gecikme (ms)";
-            hpDelayLabel.Top = 30;
-            hpDelayLabel.Left = 180;
-            hpDelayLabel.AutoSize = true;
-
-            potionTab.Controls.Add(hpDelayLabel);
-
-            hpDelayBox = new TextBox();
-            hpDelayBox.Top = 50;
-            hpDelayBox.Left = 180;
-            hpDelayBox.Width = 100;
-            hpDelayBox.Text = "2500";
-
-            potionTab.Controls.Add(hpDelayBox);
-
-            // MP GECİKME
-            Label mpDelayLabel = new Label();
-            mpDelayLabel.Text = "MP Gecikme (ms)";
-            mpDelayLabel.Top = 90;
-            mpDelayLabel.Left = 180;
-            mpDelayLabel.AutoSize = true;
-
-            potionTab.Controls.Add(mpDelayLabel);
-
-            mpDelayBox = new TextBox();
-            mpDelayBox.Top = 110;
-            mpDelayBox.Left = 180;
-            mpDelayBox.Width = 100;
-            mpDelayBox.Text = "2500";
-
-            potionTab.Controls.Add(mpDelayBox);
-
-            // START
-            Button startButton = new Button();
-            startButton.Text = "START";
-            startButton.Top = 300;
-            startButton.Left = 20;
-            startButton.Width = 120;
-            startButton.Height = 40;
-
-            potionTab.Controls.Add(startButton);
-
-            // STOP
-            Button stopButton = new Button();
-            stopButton.Text = "STOP";
-            stopButton.Top = 300;
-            stopButton.Left = 160;
-            stopButton.Width = 120;
-            stopButton.Height = 40;
-
-            potionTab.Controls.Add(stopButton);
-
-            // STATUS
-            statusLabel = new Label();
-            statusLabel.Text = "Durum : Kapalı";
-            statusLabel.Top = 360;
-            statusLabel.Left = 20;
-            statusLabel.AutoSize = true;
-
-            potionTab.Controls.Add(statusLabel);
-
-            // TIMER
-            timer.Interval = 100;
-
-            timer.Tick += Timer_Tick;
-
-            // START EVENT
-            startButton.Click += (s, e) =>
-            {
-                timer.Start();
-                statusLabel.Text = "Durum : Aktif";
-            };
-
-            // STOP EVENT
-            stopButton.Click += (s, e) =>
-            {
-                timer.Stop();
-                statusLabel.Text = "Durum : Kapalı";
-            };
+            InitTimer();
         }
 
-        private void Timer_Tick(object sender, EventArgs e)
+        private void InitTimer()
         {
-            // HP KOORDİNAT
-            Color hpColor = GetPixelColor(274, 18);
-
-            // MP KOORDİNAT
-            Color mpColor = GetPixelColor(273, 35);
-
-            int hpPercent = int.Parse(hpPercentBox.Text);
-            int mpPercent = int.Parse(mpPercentBox.Text);
-
-            int hpDelay = int.Parse(hpDelayBox.Text);
-            int mpDelay = int.Parse(mpDelayBox.Text);
-
-            // HP ORANI
-            int currentHp = hpColor.R;
-
-            // MP ORANI
-            int currentMp = mpColor.B;
-
-            // HP POT
-            if (currentHp < hpPercent)
-            {
-                if ((DateTime.Now - lastHpPot).TotalMilliseconds >= hpDelay)
-                {
-                    SendKey(hpKeyBox.Text);
-                    lastHpPot = DateTime.Now;
-                }
-            }
-
-            // MP POT
-            if (currentMp < mpPercent)
-            {
-                if ((DateTime.Now - lastMpPot).TotalMilliseconds >= mpDelay)
-                {
-                    SendKey(mpKeyBox.Text);
-                    lastMpPot = DateTime.Now;
-                }
-            }
-        }
-
-        void SendKey(string key)
-        {
-            SendKeys.Send(key);
-        }
-
-        Color GetPixelColor(int x, int y)
-        {
-            Bitmap bmp = new Bitmap(1, 1);
-
-            using (Graphics g = Graphics.FromImage(bmp))
-            {
-                g.CopyFromScreen(x, y, 0, 0, new Size(1, 1));
-            }
-
-            return bmp.GetPixel(0, 0);
+            potionTimer = new System.Windows.Forms.Timer();
+            potionTimer.Interval = 100; // 100ms'de bir kontrol et
+            potionTimer.Tick += PotionTimer_Tick;
         }
 
         private void Form1_Load(object sender, EventArgs e)
         {
+            guna2PanelTop.MouseDown += (s, ev) => { if (ev.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0x112, 0xf012, 0); } };
+            lblTitle.MouseDown += (s, ev) => { if (ev.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0x112, 0xf012, 0); } };
 
+            trackHP.Scroll += (s, ev) => lblHPValue.Text = $"%{trackHP.Value}";
+            trackMP.Scroll += (s, ev) => lblMPValue.Text = $"%{trackMP.Value}";
+            lblHPValue.Text = $"%{trackHP.Value}";
+            lblMPValue.Text = $"%{trackMP.Value}";
+
+            for (int i = 1; i <= 8; i++) { cmbHPKey.Items.Add(i.ToString()); cmbMPKey.Items.Add(i.ToString()); }
+            cmbHPKey.SelectedIndex = 0; // 1
+            cmbMPKey.SelectedIndex = 1; // 2
+
+            RefreshWindowList();
+            UpdateStatus("Beklemede", Color.Orange);
         }
+
+        private void RefreshWindowList()
+        {
+            cmbWindows.Items.Clear();
+            var list = Process.GetProcesses().Where(p => !string.IsNullOrEmpty(p.MainWindowTitle)).OrderBy(p => p.MainWindowTitle);
+            foreach (var p in list) cmbWindows.Items.Add(p.MainWindowTitle);
+            var hitko = cmbWindows.Items.Cast<string>().FirstOrDefault(s => s.Contains("Knight") || s.Contains("HitKO"));
+            if (hitko != null) cmbWindows.SelectedItem = hitko;
+        }
+
+        private void btnRefreshWindows_Click(object sender, EventArgs e) => RefreshWindowList();
+
+        private void PotionTimer_Tick(object sender, EventArgs e)
+        {
+            if (string.IsNullOrEmpty(targetWindowTitle)) return;
+            IntPtr hWnd = FindWindow(null, targetWindowTitle);
+            if (hWnd == IntPtr.Zero) return;
+
+            if (chkOnlyWhenActive.Checked)
+            {
+                IntPtr fg = GetForegroundWindow();
+                var sb = new StringBuilder(256);
+                GetWindowText(fg, sb, 256);
+                if (!sb.ToString().Equals(targetWindowTitle)) return;
+            }
+
+            var now = DateTime.Now;
+
+            // HP KONTROL
+            if (toggleAutoHP.Checked && IsHpBelow(trackHP.Value) && (now - lastHPTime).TotalMilliseconds >= (double)nudHPDelay.Value)
+            {
+                PressKey(cmbHPKey.Text[0]);
+                lastHPTime = now;
+                UpdateStatus($"HP Pot basıldı %{trackHP.Value}", Color.Lime);
+            }
+
+            // MP KONTROL
+            if (toggleAutoMP.Checked && IsMpBelow(trackMP.Value) && (now - lastMPTime).TotalMilliseconds >= (double)nudMPDelay.Value)
+            {
+                PressKey(cmbMPKey.Text[0]);
+                lastMPTime = now;
+                UpdateStatus($"MP Pot basıldı %{trackMP.Value}", Color.Cyan);
+            }
+        }
+
+        private bool IsHpBelow(int percent)
+        {
+            IntPtr hWnd = FindWindow(null, targetWindowTitle);
+            if (!GetWindowRect(hWnd, out RECT r)) return false;
+
+            int checkX = r.Left + hpBarX + (barWidth * percent / 100);
+            int checkY = r.Top + hpBarY;
+
+            Color c = GetPixelColor(checkX, checkY);
+            // HP barı kırmızıdır, eğer kırmızı yoksa can düşmüş
+            return c.R < 100; // kırmızı < 100 ise boş
+        }
+
+        private bool IsMpBelow(int percent)
+        {
+            IntPtr hWnd = FindWindow(null, targetWindowTitle);
+            if (!GetWindowRect(hWnd, out RECT r)) return false;
+
+            int checkX = r.Left + mpBarX + (barWidth * percent / 100);
+            int checkY = r.Top + mpBarY;
+
+            Color c = GetPixelColor(checkX, checkY);
+            // MP barı mavidir
+            return c.B < 100;
+        }
+
+        private Color GetPixelColor(int x, int y)
+        {
+            IntPtr hdc = GetDC(IntPtr.Zero);
+            uint pixel = GetPixel(hdc, x, y);
+            ReleaseDC(IntPtr.Zero, hdc);
+            return Color.FromArgb((int)(pixel & 0x000000FF), (int)(pixel & 0x0000FF00) >> 8, (int)(pixel & 0x00FF0000) >> 16);
+        }
+
+        private void PressKey(char key)
+        {
+            IntPtr hWnd = FindWindow(null, targetWindowTitle);
+            if (hWnd == IntPtr.Zero) return;
+
+            ShowWindow(hWnd, 9);
+            SetForegroundWindow(hWnd);
+            System.Threading.Thread.Sleep(30);
+
+            short vk = VkKeyScan(key);
+            byte vkCode = (byte)(vk & 0xff);
+            uint scan = MapVirtualKey(vkCode, 0);
+
+            keybd_event(vkCode, (byte)scan, 0, 0);
+            System.Threading.Thread.Sleep(20);
+            keybd_event(vkCode, (byte)scan, KEYEVENTF_KEYUP, 0);
+        }
+
+        private void btnStart_Click(object sender, EventArgs e)
+        {
+            if (cmbWindows.SelectedItem == null) { MessageBox.Show("Ayarlardan hedef pencere seç!"); return; }
+            targetWindowTitle = cmbWindows.SelectedItem.ToString();
+            isRunning = true;
+            btnStart.Enabled = false;
+            btnStop.Enabled = true;
+            potionTimer.Start();
+            UpdateStatus("Pixel okuma aktif", Color.Lime);
+        }
+
+        private void btnStop_Click(object sender, EventArgs e)
+        {
+            isRunning = false;
+            btnStart.Enabled = true;
+            btnStop.Enabled = false;
+            potionTimer.Stop();
+            UpdateStatus("Durduruldu", Color.Red);
+        }
+
+        private void UpdateStatus(string text, Color color) { lblStatus.Text = $"Durum: {text}"; lblStatus.ForeColor = color; }
+
+        private void btnMain_Click(object sender, EventArgs e) { SetActiveButton(btnMain); panelSettings.Visible = false; guna2PanelMain.Visible = true; }
+        private void btnLogs_Click(object sender, EventArgs e) { SetActiveButton(btnLogs); MessageBox.Show("Log paneli yakında"); }
+        private void btnSettings_Click(object sender, EventArgs e) { SetActiveButton(btnSettings); guna2PanelMain.Visible = false; panelSettings.Visible = true; panelSettings.BringToFront(); RefreshWindowList(); }
+
+        private void SetActiveButton(Guna.UI2.WinForms.Guna2Button btn)
+        {
+            btnMain.FillColor = Color.Transparent; btnLogs.FillColor = Color.Transparent; btnSettings.FillColor = Color.Transparent;
+            btnMain.ForeColor = Color.Silver; btnLogs.ForeColor = Color.Silver; btnSettings.ForeColor = Color.Silver;
+            btn.FillColor = Color.FromArgb(0, 122, 204); btn.ForeColor = Color.White;
+        }
+
+        private void btnClose_Click(object sender, EventArgs e) => Application.Exit();
     }
 }
